@@ -1,0 +1,61 @@
+services:
+  database:
+    build: ./database
+    container_name: letter_database
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-letter_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-letter_password}
+      POSTGRES_DB: ${POSTGRES_DB:-letter_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - letter_network
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: letter_backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-letter_user}:${POSTGRES_PASSWORD:-letter_password}@database:5432/${POSTGRES_DB:-letter_db}
+      SECRET_KEY: ${SECRET_KEY:-replace-this-with-a-long-random-value}
+      UPLOAD_DIR: /app/uploads
+      ACCESS_TOKEN_EXPIRE_MINUTES: 480
+    volumes:
+      - attachment_data:/app/uploads
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - letter_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build: ./frontend
+    container_name: letter_frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - letter_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  postgres_data:
+  attachment_data:
+
+networks:
+  letter_network:
